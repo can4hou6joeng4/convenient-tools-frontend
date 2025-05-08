@@ -1,0 +1,44 @@
+{
+	"pages": [
+		{
+			"path": "pages/tools/index",
+			"style": {
+				"navigationBarTitleText": "便捷工具",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black",
+				"app-plus": {
+					"bounce": "none",
+					"titleNView": {
+						"buttons": [
+							{
+								"text": "⋮",
+								"fontSize": "22px",
+								"color": "#333333"
+							}
+						]
+					}
+				}
+			}
+		},
+		{
+			"path": "pages/tools/link-parser",
+			"style": {
+				"navigationBarTitleText": "输入链接",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		},
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "便捷工具集",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F5F5F5"
+	},
+	"easycom": {
+		"autoscan": true,
+		"custom": {
+			"^uni-(.*)": "@dcloudio/uni-ui/lib/uni-$1/uni-$1.vue"
+		}
+	}
+}
