@@ -1,6 +1,6 @@
 <template>
   <view class="container">
-    <!-- 输入和平台部分 -->
+    <!-- 输入部分 -->
     <view class="input-platform-section">
       <view class="section-title">输入链接</view>
       <view class="input-box">
@@ -13,24 +13,6 @@
           :disabled="isLoading"
         />
         <view v-if="linkUrl" class="clear-icon" @tap="clearInput">×</view>
-      </view>
-      
-      <view class="platform-wrapper">
-        <view class="section-title section-subtitle">支持的平台</view>
-        <view class="platform-list">
-          <view class="platform-item">
-            <view class="platform-icon" :style="{ backgroundColor: '#FE2C55' }"></view>
-            <text class="platform-name">小红书</text>
-          </view>
-          <view class="platform-item">
-            <view class="platform-icon" :style="{ backgroundColor: '#000000' }"></view>
-            <text class="platform-name">抖音</text>
-          </view>
-          <view class="platform-item">
-            <view class="platform-icon" :style="{ backgroundColor: '#FC3E3E' }"></view>
-            <text class="platform-name">西瓜视频</text>
-          </view>
-        </view>
       </view>
     </view>
     
@@ -60,9 +42,9 @@
           <view class="avatar-wrapper">
             <image 
               class="avatar" 
-              :src="parseResult.authorAvatar || '/static/icons/avatar.svg'" 
+              :src="getProxyUrl(parseResult.authorAvatar || '/static/icons/avatar.svg', 'image')" 
               mode="aspectFill"
-              @tap="previewImage(parseResult.authorAvatar || '/static/icons/avatar.svg')"
+              @tap="previewImage(parseResult.authorAvatar || '/static/icons/avatar.svg', parseResult.images.map(img => img.url))"
               @longpress="saveImageToAlbum(parseResult.authorAvatar || '/static/icons/avatar.svg')"
             ></image>
           </view>
@@ -99,7 +81,7 @@
           >
             <image 
               class="result-image" 
-              :src="image.url" 
+              :src="getProxyUrl(image.url, 'image')" 
               mode="aspectFill"
               @tap="previewImage(image.url, parseResult.images.map(img => img.url))"
               @longpress="saveImageToAlbum(image.url)"
@@ -130,10 +112,10 @@
           >
             <video 
               class="result-video" 
-              :src="video.url" 
+              :src="getProxyUrl(video.url, 'video')" 
               controls
               object-fit="cover"
-              :poster="video.cover"
+              :poster="getProxyUrl(video.cover, 'image')"
             ></video>
             <view class="video-info">
               <text class="video-title">{{ video.title || `视频${index + 1}` }}</text>
@@ -153,10 +135,8 @@ export default {
       linkUrl: '',
       parseResult: null,
       isLoading: false,
-      xiaohongshuIcon: '/static/icons/xiaohongshu.svg',
-      douyinIcon: '/static/icons/douyin.svg',
-      xiguaIcon: '/static/icons/xigua.svg',
-      platform: ''
+      platform: '',
+      baseProxyUrl: 'https://tools.bobochang.cn/api/tools/media-proxy'
     };
   },
   onLoad() {
@@ -304,6 +284,18 @@ export default {
       }
     },
     
+    // 添加获取代理URL的方法
+    getProxyUrl(originalUrl, type = 'video') {
+      if (!originalUrl) return '';
+      
+      // 如果已经是代理URL，直接返回
+      if (originalUrl.includes('/api/tools/media-proxy')) {
+        return originalUrl;
+      }
+      
+      return `${this.baseProxyUrl}?url=${encodeURIComponent(originalUrl)}&type=${type}`;
+    },
+    
     // 格式化API返回的结果
     formatApiResult(apiResult) {
       console.log('原始API返回数据:', apiResult);
@@ -367,21 +359,24 @@ export default {
       let imageUrls = [];
       
       if (urls && Array.isArray(urls)) {
-        // 过滤掉可能的空值
-        imageUrls = urls.filter(url => !!url);
+        // 过滤掉可能的空值，并添加代理URL
+        imageUrls = urls.filter(url => !!url).map(url => this.getProxyUrl(url, 'image'));
       } else {
         // 单张图片情况
-        imageUrls = [currentImage];
+        imageUrls = [this.getProxyUrl(currentImage, 'image')];
       }
       
       // 确保至少有一张图片
       if (imageUrls.length === 0) {
-        imageUrls = [currentImage];
+        imageUrls = [this.getProxyUrl(currentImage, 'image')];
       }
+      
+      // 获取当前图片的代理URL
+      const currentImageProxy = this.getProxyUrl(currentImage, 'image');
       
       // 简化预览配置，减少可能的问题
       uni.previewImage({
-        current: currentImage,
+        current: currentImageProxy,
         urls: imageUrls
       });
     },
@@ -475,19 +470,42 @@ export default {
       }
       
       // 构建代理URL - 使用已有的后端接口
-      // 根据媒体代理接口文档，使用/api/tools/media-proxy作为接口路径
       const baseUrl = 'https://tools.bobochang.cn';
-      const proxyUrl = `${baseUrl}/api/tools/media-proxy?url=${encodeURIComponent(originalUrl)}&type=${mediaType}`;
+      // 添加时间戳避免缓存问题
+      const timestamp = new Date().getTime();
+      const proxyUrl = `${baseUrl}/api/tools/media-proxy?url=${encodeURIComponent(originalUrl)}&type=${mediaType}&t=${timestamp}`;
       
       console.log(`使用代理下载${mediaType}:`, proxyUrl);
       
       return new Promise((resolve, reject) => {
-        uni.downloadFile({
+        // 下载前增加请求头控制
+        const downloadTask = uni.downloadFile({
           url: proxyUrl,
+          // 增加超时时间
+          timeout: 60000,
+          // 增加请求头
+          header: {
+            'Accept': mediaType === 'video' ? 'video/mp4' : 'image/*',
+            'Cache-Control': 'no-cache'
+          },
           success: (res) => {
             // 根据接口文档，成功时的状态码应为200
             if (res.statusCode === 200) {
               console.log(`通过代理下载${mediaType}成功:`, res.tempFilePath);
+              
+              // 特别处理视频文件
+              if (mediaType === 'video') {
+                // 检查文件扩展名
+                if (!res.tempFilePath.toLowerCase().endsWith('.mp4')) {
+                  console.warn('视频文件扩展名不是.mp4，这可能导致在小程序中保存失败');
+                  
+                  // #ifdef MP-WEIXIN
+                  // 尽管我们不能修改文件名，但可以添加警告日志
+                  console.warn('警告：微信小程序需要MP4格式的视频文件才能保存到相册');
+                  // #endif
+                }
+              }
+              
               resolve(res.tempFilePath);
             } else {
               // 非200状态码表示错误
@@ -528,6 +546,18 @@ export default {
             reject(new Error(errorMsg));
           }
         });
+        
+        // 监听下载进度
+        downloadTask.onProgressUpdate((res) => {
+          console.log(`下载进度: ${res.progress}%`);
+          // 下载超过一半时更新loading提示
+          if (res.progress > 50) {
+            uni.showLoading({
+              title: `下载中 ${res.progress}%`,
+              mask: true
+            });
+          }
+        });
       });
     },
     
@@ -538,22 +568,102 @@ export default {
         mask: true
       });
       
+      // 添加调试日志
+      console.log('开始保存图片，原始URL:', imageUrl);
+      
+      // 检查图片URL格式
+      if (imageUrl && !(/\.(jpg|jpeg|png|gif|webp)$/i.test(imageUrl))) {
+        console.warn('图片URL不是常见图片格式，保存可能失败');
+        // 仍然继续尝试，因为代理可能会处理格式
+      }
+      
       this.checkPhotoAlbumAuth()
         .then(() => {
+          console.log('相册权限已获取，开始下载图片');
           // 使用代理下载替代直接下载
           return this.downloadMediaViaProxy(imageUrl, 'image');
         })
         .then((tempFilePath) => {
+          console.log('图片下载成功，临时路径:', tempFilePath);
+          
+          // 检查文件是否存在
+          return new Promise((resolve, reject) => {
+            // #ifdef MP-WEIXIN
+            uni.getFileInfo({
+              filePath: tempFilePath,
+              success: (fileInfo) => {
+                console.log('文件信息:', fileInfo);
+                if (fileInfo.size <= 0) {
+                  reject(new Error('下载的图片文件大小为0'));
+                  return;
+                }
+                resolve(tempFilePath);
+              },
+              fail: (err) => {
+                console.error('获取文件信息失败:', err);
+                reject(new Error('无法获取图片文件信息'));
+              }
+            });
+            // #endif
+            
+            // #ifndef MP-WEIXIN
+            resolve(tempFilePath);
+            // #endif
+          });
+        })
+        .then((tempFilePath) => {
+          // 获取系统信息
+          return new Promise((resolve, reject) => {
+            // 获取系统信息用于调试
+            uni.getSystemInfo({
+              success: (sysInfo) => {
+                console.log('系统信息:', JSON.stringify(sysInfo));
+                resolve({tempFilePath, sysInfo});
+              },
+              fail: () => {
+                // 获取系统信息失败仍然继续
+                resolve({tempFilePath, sysInfo: null});
+              }
+            });
+          });
+        })
+        .then(({tempFilePath, sysInfo}) => {
           // 保存到相册
+          console.log('开始将图片保存到相册');
           return new Promise((resolve, reject) => {
             uni.saveImageToPhotosAlbum({
               filePath: tempFilePath,
-              success: () => {
-                resolve();
+              success: (res) => {
+                console.log('保存图片到相册成功:', res);
+                resolve(res);
               },
               fail: (err) => {
                 console.error('保存图片到相册失败:', err);
-                reject(err);
+                console.error('错误详情:', JSON.stringify(err));
+                
+                // 尝试分析更详细的错误原因
+                let errorDetail = '';
+                let platformInfo = sysInfo ? `${sysInfo.platform} ${sysInfo.system}` : '未知平台';
+                
+                if (err.errMsg) {
+                  errorDetail = err.errMsg;
+                  console.error(`在 ${platformInfo} 上保存失败: ${errorDetail}`);
+                  
+                  // 检查特定错误类型
+                  if (err.errMsg.includes('file not exist')) {
+                    errorDetail = '文件不存在';
+                  } else if (err.errMsg.includes('fail permission denied')) {
+                    errorDetail = '权限被拒绝';
+                  } else if (err.errMsg.includes('fail invalid file')) {
+                    errorDetail = '无效的文件格式';
+                  } else if (err.errMsg.includes('fail system denied')) {
+                    errorDetail = '系统拒绝访问';
+                  } else if (err.errMsg.includes('fail network')) {
+                    errorDetail = '网络错误';
+                  }
+                }
+                
+                reject(new Error(`保存图片失败: ${errorDetail}`));
               }
             });
           });
@@ -585,19 +695,57 @@ export default {
               errorMessage = '下载超时，请检查网络连接';
             } else if (err.message.includes('无效的媒体文件链接')) {
               errorMessage = '无效的图片链接';
+            } else if (err.message.includes('无效的文件格式')) {
+              errorMessage = '图片格式不支持';
+              // 显示更详细的提示
+              uni.showModal({
+                title: '格式不支持',
+                content: '该图片格式不受支持，请尝试其他图片或长按图片保存。',
+                showCancel: false
+              });
+              return;
+            } else if (err.message.includes('文件不存在')) {
+              errorMessage = '图片文件不存在或已过期';
+            } else if (err.message.includes('权限被拒绝')) {
+              errorMessage = '保存权限被拒绝';
+              // 引导用户重新授权
+              uni.showModal({
+                title: '权限提示',
+                content: '保存图片需要相册权限，是否前往设置开启权限？',
+                confirmText: '去设置',
+                success: (res) => {
+                  if (res.confirm) {
+                    uni.openSetting();
+                  }
+                }
+              });
+              return;
+            } else if (err.message.includes('系统拒绝访问')) {
+              errorMessage = '系统拒绝访问相册';
+              uni.showModal({
+                title: '系统限制',
+                content: '系统拒绝保存图片，请检查手机存储空间或隐私设置。',
+                showCancel: false
+              });
+              return;
+            } else {
+              // 使用原始错误消息
+              errorMessage = err.message;
             }
           } else if (err && err.errMsg) {
             if (err.errMsg.includes('cancel')) {
               errorMessage = '用户取消了保存';
             } else if (err.errMsg.includes('fail auth')) {
               errorMessage = '未获得保存到相册的授权';
+            } else {
+              errorMessage = err.errMsg;
             }
           }
           
           uni.showToast({
             title: errorMessage,
             icon: 'none',
-            duration: 2000
+            duration: 2500
           });
         });
     },
@@ -634,14 +782,25 @@ export default {
     },
     
     // 使用代理逐个保存图片
-    saveImagesWithProxy(imageUrls, currentIndex = 0, successCount = 0) {
+    saveImagesWithProxy(imageUrls, currentIndex = 0, successCount = 0, failCount = 0) {
       if (currentIndex >= imageUrls.length) {
         // 全部处理完成
         uni.showToast({
           title: `共保存成功${successCount}/${imageUrls.length}张图片`,
-          icon: 'success',
+          icon: successCount > 0 ? 'success' : 'none',
           duration: 2500
         });
+        
+        // 如果全部失败，显示提示
+        if (successCount === 0 && failCount === imageUrls.length) {
+          setTimeout(() => {
+            uni.showModal({
+              title: '保存失败',
+              content: '所有图片均保存失败，可能是格式问题或权限问题。请尝试长按图片保存。',
+              showCancel: false
+            });
+          }, 1500);
+        }
         return;
       }
       
@@ -652,8 +811,38 @@ export default {
         mask: true
       });
       
+      console.log(`开始保存第${currentIndex + 1}张图片, URL:`, currentUrl);
+      
       // 使用代理下载图片
       this.downloadMediaViaProxy(currentUrl, 'image')
+        .then((tempFilePath) => {
+          console.log(`第${currentIndex + 1}张图片下载成功，临时路径:`, tempFilePath);
+          
+          // 检查文件
+          return new Promise((resolve, reject) => {
+            // #ifdef MP-WEIXIN
+            uni.getFileInfo({
+              filePath: tempFilePath,
+              success: (fileInfo) => {
+                if (fileInfo.size <= 0) {
+                  reject(new Error('文件大小为0'));
+                  return;
+                }
+                resolve(tempFilePath);
+              },
+              fail: (err) => {
+                console.error(`第${currentIndex + 1}张图片文件检查失败:`, err);
+                // 继续尝试保存
+                resolve(tempFilePath);
+              }
+            });
+            // #endif
+            
+            // #ifndef MP-WEIXIN
+            resolve(tempFilePath);
+            // #endif
+          });
+        })
         .then((tempFilePath) => {
           // 保存到相册
           return new Promise((resolve, reject) => {
@@ -664,6 +853,12 @@ export default {
               },
               fail: (err) => {
                 console.error(`第${currentIndex + 1}张图片保存失败:`, err);
+                
+                // 详细记录错误信息
+                if (err.errMsg) {
+                  console.error(`错误信息: ${err.errMsg}`);
+                }
+                
                 if (err.errMsg && err.errMsg.includes('auth deny')) {
                   // 如果是授权问题，直接退出批量保存
                   uni.hideLoading();
@@ -679,7 +874,9 @@ export default {
                   });
                   throw new Error('auth_denied');
                 }
-                resolve(false); // 保存失败但继续下一张
+                
+                // 不阻断流程，继续保存下一张
+                resolve(false); // 保存失败
               }
             });
           });
@@ -687,14 +884,24 @@ export default {
         .then((success) => {
           uni.hideLoading();
           
+          // 短暂提示当前状态
+          if (success) {
+            uni.showToast({
+              title: `第${currentIndex + 1}张保存成功`,
+              icon: 'success',
+              duration: 500
+            });
+          }
+          
           // 继续处理下一张图片
           setTimeout(() => {
             this.saveImagesWithProxy(
               imageUrls, 
               currentIndex + 1, 
-              success ? successCount + 1 : successCount
+              success ? successCount + 1 : successCount,
+              success ? failCount : failCount + 1
             );
-          }, 100); // 短暂延迟，避免UI堵塞
+          }, 200); // 短暂延迟，避免UI堵塞
         })
         .catch((err) => {
           console.error(`第${currentIndex + 1}张图片处理失败:`, err);
@@ -730,21 +937,23 @@ export default {
           uni.showToast({
             title: errorMsg,
             icon: 'none',
-            duration: 1500
+            duration: 1000
           });
           
           // 继续处理下一张
           setTimeout(() => {
-            this.saveImagesWithProxy(imageUrls, currentIndex + 1, successCount);
-          }, 1500);
+            this.saveImagesWithProxy(
+              imageUrls, 
+              currentIndex + 1, 
+              successCount, 
+              failCount + 1
+            );
+          }, 1000);
         });
     },
     
     // 保存视频到相册 - 使用媒体代理服务
     saveVideoToAlbum(videoUrl) {
-      // 检查是否为微信小程序环境
-      const isMpWeixin = this.platform === 'mp-weixin';
-      
       uni.showLoading({
         title: '准备保存视频...',
         mask: true
@@ -752,20 +961,61 @@ export default {
       
       this.checkPhotoAlbumAuth()
         .then(() => {
-          // 使用代理下载替代直接下载
+          // 使用代理下载视频
           return this.downloadMediaViaProxy(videoUrl, 'video');
+        })
+        .then((tempFilePath) => {
+          // 检查文件是否存在和有效
+          return new Promise((resolve, reject) => {
+            // #ifdef MP-WEIXIN
+            uni.getFileInfo({
+              filePath: tempFilePath,
+              success: (fileInfo) => {
+                if (fileInfo.size <= 0) {
+                  reject(new Error('下载的视频文件大小为0'));
+                  return;
+                }
+                resolve(tempFilePath);
+              },
+              fail: (err) => {
+                reject(new Error('无法获取视频文件信息'));
+              }
+            });
+            // #endif
+            
+            // #ifndef MP-WEIXIN
+            resolve(tempFilePath);
+            // #endif
+          });
         })
         .then((tempFilePath) => {
           // 保存到相册
           return new Promise((resolve, reject) => {
             uni.saveVideoToPhotosAlbum({
               filePath: tempFilePath,
-              success: () => {
-                resolve();
+              success: (res) => {
+                resolve(res);
               },
               fail: (err) => {
-                console.error('保存视频到相册失败:', err);
-                reject(err);
+                let errorDetail = '';
+                
+                if (err.errMsg) {
+                  if (err.errMsg.includes('file not exist')) {
+                    errorDetail = '文件不存在';
+                  } else if (err.errMsg.includes('fail permission denied')) {
+                    errorDetail = '权限被拒绝';
+                  } else if (err.errMsg.includes('fail invalid file')) {
+                    errorDetail = '无效的文件格式';
+                  } else if (err.errMsg.includes('fail system denied')) {
+                    errorDetail = '系统拒绝访问';
+                  } else if (err.errMsg.includes('fail network')) {
+                    errorDetail = '网络错误';
+                  } else {
+                    errorDetail = err.errMsg;
+                  }
+                }
+                
+                reject(new Error(errorDetail || '保存失败'));
               }
             });
           });
@@ -778,15 +1028,12 @@ export default {
           });
         })
         .catch((err) => {
-          console.error('视频保存流程错误:', err);
           uni.hideLoading();
           
-          // 根据错误类型显示不同提示
           let errorMessage = '保存失败，请重试';
           
           if (err && err.message) {
             if (err.message.includes('域名校验失败')) {
-              // 域名校验错误
               uni.showModal({
                 title: '提示',
                 content: '视频保存功能需要在小程序后台配置合法域名，请联系管理员。',
@@ -795,21 +1042,45 @@ export default {
               return;
             } else if (err.message.includes('下载超时')) {
               errorMessage = '下载超时，请检查网络连接';
-            } else if (err.message.includes('无效的媒体文件链接')) {
-              errorMessage = '无效的视频链接';
-            }
-          } else if (err && err.errMsg) {
-            if (err.errMsg.includes('cancel')) {
-              errorMessage = '用户取消了保存';
-            } else if (err.errMsg.includes('fail auth')) {
-              errorMessage = '未获得保存到相册的授权';
+            } else if (err.message.includes('无效的文件格式')) {
+              errorMessage = '视频格式不支持，仅支持MP4格式';
+              uni.showModal({
+                title: '格式不支持',
+                content: '微信小程序仅支持保存MP4格式的视频到相册。',
+                showCancel: false
+              });
+              return;
+            } else if (err.message.includes('文件不存在')) {
+              errorMessage = '视频文件不存在或已过期';
+            } else if (err.message.includes('权限被拒绝')) {
+              uni.showModal({
+                title: '权限提示',
+                content: '保存视频需要相册权限，是否前往设置开启权限？',
+                confirmText: '去设置',
+                success: (res) => {
+                  if (res.confirm) {
+                    uni.openSetting();
+                  }
+                }
+              });
+              return;
+            } else if (err.message.includes('系统拒绝访问')) {
+              errorMessage = '系统拒绝访问相册';
+              uni.showModal({
+                title: '系统限制',
+                content: '系统拒绝保存视频，请检查手机存储空间或隐私设置。',
+                showCancel: false
+              });
+              return;
+            } else {
+              errorMessage = err.message;
             }
           }
           
           uni.showToast({
             title: errorMessage,
             icon: 'none',
-            duration: 2000
+            duration: 2500
           });
         });
     },
@@ -829,7 +1100,7 @@ page {
   margin: 0 auto;
 }
 
-/* 输入和平台部分样式 */
+/* 输入部分样式 */
 .input-platform-section {
   background-color: #ffffff;
   padding: 30rpx;
@@ -843,12 +1114,6 @@ page {
   font-weight: 500;
   color: #333;
   margin-bottom: 24rpx;
-}
-
-.section-subtitle {
-  margin-top: 30rpx;
-  margin-bottom: 20rpx;
-  font-size: 30rpx;
 }
 
 .input-box {
@@ -880,38 +1145,6 @@ page {
   text-align: center;
 }
 
-.platform-wrapper {
-  margin-top: 24rpx;
-}
-
-/* 平台部分样式 */
-.platform-list {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.platform-item {
-  display: flex;
-  align-items: center;
-  margin-right: 30rpx;
-  margin-bottom: 10rpx;
-  background-color: #f5f5f5;
-  border-radius: 100rpx;
-  padding: 10rpx 20rpx;
-}
-
-.platform-icon {
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 50%;
-  margin-right: 10rpx;
-}
-
-.platform-name {
-  font-size: 24rpx;
-  color: #333;
-}
-
 /* 解析按钮样式 */
 .parse-button {
   width: 85%;
@@ -925,6 +1158,21 @@ page {
   margin: 50rpx auto;
   text-align: center;
   box-shadow: 0 4rpx 10rpx rgba(0, 0, 0, 0.05);
+  border: none; /* 移除默认边框 */
+  position: relative; /* 添加相对定位 */
+  overflow: visible; /* 确保边框可见 */
+}
+
+.parse-button::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 44rpx;
+  border: none; /* 移除默认边框 */
+  box-sizing: border-box;
 }
 
 .parse-button-active {

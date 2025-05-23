@@ -55,7 +55,8 @@
             "urlCheck": false,
             "es6": true,
             "postcss": true,
-            "minified": true
+            "minified": true,
+            "checkSiteMap": false
         },
         "usingComponents": true,
         "requiredPrivateInfos": [
@@ -68,7 +69,8 @@
         },
         "optimization": {
             "subPackages": true
-        }
+        },
+        "lazyCodeLoading": "requiredComponents"
     },
     "mp-alipay": {
         "usingComponents": true
@@ -79,7 +81,7 @@
     "mp-toutiao": {
         "usingComponents": true
     },
-    "uniStatistics": {
+    "uniStatistics": {  
         "enable": false
     },
     "vueVersion": "3"

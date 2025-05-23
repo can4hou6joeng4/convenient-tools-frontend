@@ -28,6 +28,22 @@
 				"navigationBarTextStyle": "black"
 			}
 		},
+		{
+			"path": "pages/tools/image-compressor",
+			"style": {
+				"navigationBarTitleText": "图片压缩",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/tools/score-calculator",
+			"style": {
+				"navigationBarTitleText": "积分计算器",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		}
 	],
 	"globalStyle": {
 		"navigationBarTextStyle": "black",
