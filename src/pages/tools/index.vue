@@ -1,16 +1,7 @@
 <template>
   <view class="container">
     <view class="tools-grid">
-      <view class="tool-card" hover-class="tool-card-hover" @tap="handleToolClick('imageCompressor')">
-        <view class="tool-icon-wrapper image-compressor-icon">
-          <image class="tool-icon-img" src="/static/icons/compress.png" mode="aspectFit"></image>
-        </view>
-        <view class="tool-info">
-          <view class="tool-name">图片压缩</view>
-          <view class="tool-desc">高质量压缩图片</view>
-        </view>
-      </view>
-
+      
       <view class="tool-card" hover-class="tool-card-hover" @tap="handleToolClick('linkParser')">
         <view class="tool-icon-wrapper link-parser-icon">
           <image class="tool-icon-img" src="/static/icons/link.png" mode="aspectFit"></image>
@@ -28,6 +19,16 @@
         <view class="tool-info">
           <view class="tool-name">积分计算</view>
           <view class="tool-desc">多人游戏积分</view>
+        </view>
+      </view>
+
+      <view class="tool-card" hover-class="tool-card-hover" @tap="handleToolClick('imageCompressor')">
+        <view class="tool-icon-wrapper image-compressor-icon">
+          <image class="tool-icon-img" src="/static/icons/compress.png" mode="aspectFit"></image>
+        </view>
+        <view class="tool-info">
+          <view class="tool-name">图片压缩</view>
+          <view class="tool-desc">高质量压缩图片</view>
         </view>
       </view>
     </view>
